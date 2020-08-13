@@ -13,8 +13,8 @@ edition = "2018"
 time = "=0.2.7"
 serde_json = "1"
 tokio = { version = "^0.2", features = ["macros"] }
-reqwest = { version = "0.10", features = ["blocking", "json"] }
-user_agent = "0.9"
+reqwest = { version = "0.10", default-features = false, features = ["blocking", "json"] }
+user_agent = { version = "0.9", default-features = false, features = ["preserve_order"] }
 urlencoding = "1"
 config = "0.10"
 cookie = "0.13"
@@ -26,3 +26,8 @@ sha-1 = "0.8.2"
 
 [dev-dependencies]
 lazy_static = "1.4"
+
+[features]
+default = ["default-tls"]
+default-tls = ["reqwest/default-tls"]
+rustls-tls = ["reqwest/rustls-tls"]
