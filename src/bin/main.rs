@@ -1,6 +1,6 @@
 extern crate config;
 
-use config::*;
+use config::Config;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;

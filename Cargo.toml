@@ -1,8 +1,8 @@
 [package]
 name = "mediawiki"
 description = "A MediaWiki client library"
-keywords = ["MediaWiki","API"]
-categories = ["api-bindings","authentication"]
+keywords = ["MediaWiki", "API"]
+categories = ["api-bindings", "authentication"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/magnusmanske/mediawiki_rust"
 version = "0.2.0"
@@ -10,19 +10,23 @@ authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
-time = "=0.2.7"
-serde_json = "1"
-tokio = { version = "^0.2", features = ["macros"] }
+serde_json = "1.0"
+tokio = { version = "0.2", features = ["macros"] }
 reqwest = { version = "0.10", default-features = false, features = ["blocking", "json"] }
-user_agent = { version = "0.9", default-features = false, features = ["preserve_order"] }
-urlencoding = "1"
-config = "0.10"
-cookie = "0.13"
-nanoid = "0.3.0"
+user_agent = { version = "0.11", default-features = false, features = ["preserve_order"] }
+urlencoding = "1.1"
+config = { version = "0.10", optional = true }
+cookie = "0.14"
+nanoid = "0.3"
 url = "2.1"
-base64 = "0.11"
+base64 = "0.12"
 hmac = { version = "0.9.0", features = ["std"] }
 sha-1 = "0.9.1"
+
+[[bin]]
+name = "mediawiki"
+path = "src/bin/main.rs"
+required-features = ["config"]
 
 [dev-dependencies]
 lazy_static = "1.4"
