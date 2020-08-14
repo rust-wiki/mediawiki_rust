@@ -161,7 +161,9 @@ async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Box<
     .into_iter()
     .collect();
 
-    api.post_query_api_json(&params).await
+    api.post_query_api_json(&params)
+        .await
+        .map_err(|err| err.into_boxed() as Box<dyn Error>)
 }
 
 async fn _login_api_from_config(api: &mut mediawiki::api::Api) {
@@ -197,7 +199,9 @@ async fn _oauth_edit(api: &mut mediawiki::api::Api) {
 
     params.insert(
         "token".to_string(),
-        api.get_edit_token().await.expect("Could not get edit token"),
+        api.get_edit_token()
+            .await
+            .expect("Could not get edit token"),
     );
 
     match api.post_query_api_json_mut(&params).await {

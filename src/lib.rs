@@ -21,6 +21,7 @@ pub use reqwest;
 
 pub mod api;
 pub mod api_sync;
+pub mod error;
 pub mod page;
 pub mod title;
 pub mod user;
