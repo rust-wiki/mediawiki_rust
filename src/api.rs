@@ -28,7 +28,6 @@ use cookie::{Cookie, CookieJar};
 use nanoid::nanoid;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
@@ -252,7 +251,7 @@ impl Api {
 
     /// Returns an empty parameter list
     pub fn no_params(&self) -> Params {
-        HashMap::new()
+        Params::new()
     }
 
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
@@ -304,7 +303,7 @@ impl Api {
         params: &Params,
         max: Option<usize>,
     ) -> Result<Value> {
-        let mut cont = HashMap::<String, String>::new();
+        let mut cont = Params::new();
         let mut ret = serde_json::json!({});
         loop {
             let mut params_cont = params.clone();
