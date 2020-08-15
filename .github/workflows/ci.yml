@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  rustfmt:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    needs: rustfmt
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Clippy
+        run: cargo clippy --verbose
+
+  build:
+    needs: clippy
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build and run tests
+        env:
+          PASSWORD: ${{ secrets.WIKIBOT_PASSWORD }}
+        run: cargo test --verbose --all-features
