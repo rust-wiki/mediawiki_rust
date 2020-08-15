@@ -61,7 +61,7 @@ impl Title {
     pub fn new(title: &str, namespace_id: NamespaceID) -> Title {
         Title {
             title: Title::underscores_to_spaces(&title),
-            namespace_id: namespace_id,
+            namespace_id,
         }
     }
 
@@ -134,7 +134,7 @@ impl Title {
             Some("first-letter") => Title::first_letter_uppercase(&title),
             _ => title.to_string(),
         };
-        return Self::new(&title, namespace_id);
+        Self::new(&title, namespace_id)
     }
 
     /// Constructor, used by ``Api::result_array_to_titles``
@@ -153,7 +153,7 @@ impl Title {
 
         Title {
             title: Title::underscores_to_spaces(&title),
-            namespace_id: namespace_id,
+            namespace_id,
         }
     }
 

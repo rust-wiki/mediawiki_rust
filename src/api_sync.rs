@@ -35,7 +35,6 @@ use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
 use url::Url;
-use urlencoding;
 
 /// Alias for a namespace (could be -1 for Special pages etc.)
 pub type NamespaceID = i64;
@@ -136,7 +135,7 @@ impl ApiSync {
 
     /// Returns the maximum number of retry attempts
     pub fn max_retry_attempts(&self) -> u64 {
-        return self.max_retry_attempts;
+        self.max_retry_attempts
     }
 
     /// Sets the maximum number of retry attempts
@@ -146,7 +145,7 @@ impl ApiSync {
 
     /// Returns a reference to the serde_json Value containing the site info
     pub fn get_site_info(&self) -> &Value {
-        return &self.site_info;
+        &self.site_info
     }
 
     /// Returns a serde_json Value in site info, within the `["query"]` object.
@@ -706,7 +705,7 @@ impl ApiSync {
         let req = self.request_builder(api_url, params, method)?;
         let resp = req.send()?;
         self.enact_edit_delay(params, method);
-        return Ok(resp);
+        Ok(resp)
     }
 
     /// Delays the current thread, if the query performs an edit, and a delay time is set

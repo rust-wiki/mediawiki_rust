@@ -13,7 +13,6 @@ edition = "2018"
 serde_json = "1.0"
 tokio = { version = "0.2", features = ["macros"] }
 reqwest = { version = "0.10", default-features = false, features = ["blocking", "json"] }
-user_agent = { version = "0.11", default-features = false, features = ["preserve_order"] }
 urlencoding = "1.1"
 config = { version = "0.10", optional = true }
 cookie = "0.14"

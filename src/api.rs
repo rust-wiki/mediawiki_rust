@@ -33,7 +33,6 @@ use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
 use url::Url;
-use urlencoding;
 
 /// Alias for a namespace (could be -1 for Special pages etc.)
 pub type NamespaceID = i64;
@@ -175,7 +174,7 @@ impl Api {
 
     /// Returns the maximum number of retry attempts
     pub fn max_retry_attempts(&self) -> u64 {
-        return self.max_retry_attempts;
+        self.max_retry_attempts
     }
 
     /// Sets the maximum number of retry attempts
@@ -185,7 +184,7 @@ impl Api {
 
     /// Returns a reference to the serde_json Value containing the site info
     pub fn get_site_info(&self) -> &Value {
-        return &self.site_info;
+        &self.site_info
     }
 
     /// Returns a serde_json Value in site info, within the `["query"]` object.
@@ -235,22 +234,20 @@ impl Api {
     /// This allows for combining multiple API results via the `continue` parameter
     fn json_merge(&self, a: &mut Value, b: Value) {
         match (a, b) {
-            (a @ &mut Value::Object(_), Value::Object(b)) => match a.as_object_mut() {
-                Some(a) => {
+            (a @ &mut Value::Object(_), Value::Object(b)) => {
+                if let Some(a) = a.as_object_mut() {
                     for (k, v) in b {
                         self.json_merge(a.entry(k).or_insert(Value::Null), v);
                     }
                 }
-                None => {}
-            },
-            (a @ &mut Value::Array(_), Value::Array(b)) => match a.as_array_mut() {
-                Some(a) => {
+            }
+            (a @ &mut Value::Array(_), Value::Array(b)) => {
+                if let Some(a) = a.as_array_mut() {
                     for v in b {
                         a.push(v);
                     }
                 }
-                None => {}
-            },
+            }
             (a, b) => *a = b,
         }
     }
@@ -263,12 +260,12 @@ impl Api {
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
     pub async fn get_token(&mut self, token_type: &str) -> Result<String, Error> {
         let mut params = hashmap!["action" => "query", "meta" => "tokens"];
-        if token_type.len() != 0 {
+        if !token_type.is_empty() {
             params.insert("type".to_string(), token_type.to_string());
         }
         let mut key = token_type.to_string();
         key += &"token";
-        if token_type.len() == 0 {
+        if token_type.is_empty() {
             key = "csrftoken".into()
         }
         let x = self.query_api_json_mut(&params, Method::Get).await?;
@@ -320,13 +317,10 @@ impl Api {
             cont.clear();
             let conti = result["continue"].clone();
             self.json_merge(&mut ret, result);
-            match max {
-                Some(m) => {
-                    if self.query_result_count(&ret) >= m {
-                        break;
-                    }
+            if let Some(m) = max {
+                if self.query_result_count(&ret) >= m {
+                    break;
                 }
-                None => {}
             }
             match conti {
                 Value::Object(obj) => {
@@ -342,11 +336,8 @@ impl Api {
                 }
             }
         }
-        match ret.as_object_mut() {
-            Some(x) => {
-                x.remove("continue");
-            }
-            None => {}
+        if let Some(x) = ret.as_object_mut() {
+            x.remove("continue");
         }
 
         Ok(ret)
@@ -452,10 +443,11 @@ impl Api {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        Err(format!(
+                        return Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))?;
+                        )
+                        .into());
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -537,11 +529,8 @@ impl Api {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.maxlag_seconds {
-            Some(maxlag_seconds) => {
-                params.insert("maxlag".to_string(), maxlag_seconds.to_string());
-            }
-            None => {}
+        if let Some(maxlag_seconds) = self.maxlag_seconds {
+            params.insert("maxlag".to_string(), maxlag_seconds.to_string());
         }
     }
 
@@ -550,12 +539,9 @@ impl Api {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.maxlag_seconds {
-            Some(maxlag_seconds) => {
-                let added = cumulative + maxlag_seconds;
-                params.insert("maxlag".to_string(), added.to_string());
-            }
-            None => {}
+        if let Some(maxlag_seconds) = self.maxlag_seconds {
+            let added = cumulative + maxlag_seconds;
+            params.insert("maxlag".to_string(), added.to_string());
         }
     }
 
