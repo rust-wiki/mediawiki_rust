@@ -548,12 +548,8 @@ impl ApiSync {
         keys.sort();
 
         let ret: Vec<String> = keys
-            .iter()
-            .filter_map(|k| {
-                to_sign
-                    .get(k)
-                    .map(|k2| k.to_string() + "=" + &self.rawurlencode(&k2))
-            })
+            .into_iter()
+            .filter_map(|k| to_sign.get(&k).map(|k2| k + "=" + &self.rawurlencode(&k2)))
             .collect();
 
         let url = Url::parse(api_url)?;
