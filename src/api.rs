@@ -476,10 +476,11 @@ impl Api {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        Err(format!(
+                        return Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))?;
+                        )
+                        .into());
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -663,18 +664,17 @@ impl Api {
             .filter_map(|k| match to_sign.get(k) {
                 Some(k2) => {
                     let v = self.rawurlencode(&k2);
-                    Some(k.clone() + &"=" + &v)
+                    Some(k.clone() + "=" + &v)
                 }
                 None => None,
             })
             .collect();
 
         let url = Url::parse(api_url)?;
-        let mut url_string = url.scheme().to_owned() + &"://";
+        let mut url_string = url.scheme().to_owned() + "://";
         url_string += url.host_str().ok_or("url.host_str is None")?;
-        match url.port() {
-            Some(port) => write!(url_string, ":{}", port).unwrap(),
-            None => {}
+        if let Some(port) = url.port() {
+            write!(url_string, ":{}", port).unwrap();
         }
         url_string += url.path();
 
@@ -686,9 +686,9 @@ impl Api {
 
         let key: String = match (&oauth.g_consumer_secret, &oauth.g_token_secret) {
             (Some(g_consumer_secret), Some(g_token_secret)) => {
-                self.rawurlencode(g_consumer_secret) + &"&" + &self.rawurlencode(g_token_secret)
+                self.rawurlencode(g_consumer_secret) + "&" + &self.rawurlencode(g_token_secret)
             }
-            _ => Err("g_consumer_secret or g_token_secret not set")?,
+            _ => return Err("g_consumer_secret or g_token_secret not set".into()),
         };
 
         let mut hmac = HmacSha1::new_varkey(&key.into_bytes())?; //crypto::hmac::Hmac::new(Sha1::new(), &key.into_bytes());
@@ -750,11 +750,9 @@ impl Api {
         let parts: Vec<String> = headers
             .iter()
             .map(|(key, value)| {
-                let key = key.to_string();
+                let key = key.as_str();
                 let value = value.to_str().unwrap();
-                let key = self.rawurlencode(&key);
-                let value = self.rawurlencode(&value);
-                key.to_string() + &"=\"" + &value + &"\""
+                self.rawurlencode(key) + "=\"" + &self.rawurlencode(value) + "\""
             })
             .collect();
         header += &parts.join(", ");
@@ -819,9 +817,8 @@ impl Api {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.edit_delay_ms {
-            Some(ms) => thread::sleep(time::Duration::from_millis(ms)),
-            None => {}
+        if let Some(ms) = self.edit_delay_ms {
+            thread::sleep(time::Duration::from_millis(ms));
         }
     }
 
@@ -854,8 +851,6 @@ impl Api {
     /// Performs a login against the MediaWiki API.
     /// If successful, user information is stored in `User`, and in the cookie jar
     pub async fn login<S: Into<String>>(&mut self, lgname: S, lgpassword: S) -> Result<(), Error> {
-        let lgname: &str = &lgname.into();
-        let lgpassword: &str = &lgpassword.into();
         let lgtoken = self.get_token("login").await?;
         let params = hashmap!(
             "action" => "login",
@@ -868,7 +863,7 @@ impl Api {
             self.user.set_from_login(&res["login"])?;
             self.load_current_user_info().await
         } else {
-            Err("Login failed")?
+            Err("Login failed".into())
         }
     }
 
@@ -907,7 +902,7 @@ impl Api {
         if uri.starts_with(concept_base_uri) {
             Ok(uri[concept_base_uri.len()..].to_string())
         } else {
-            Err(format!("{} does not start with {}", uri, concept_base_uri))?
+            Err(format!("{} does not start with {}", uri, concept_base_uri).into())
         }
     }
 

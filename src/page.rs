@@ -62,7 +62,7 @@ impl Page {
         let result = api
             .get_query_api_json(&params)
             .await
-            .map_err(|e| PageError::RequestError(e))?;
+            .map_err(PageError::RequestError)?;
 
         let page = &result["query"]["pages"][0];
         if page["missing"].as_bool() == Some(true) {

@@ -213,14 +213,6 @@ impl ApiSync {
         }
     }
 
-    /// Turns a Vec of str tuples into a Hashmap of String, to be used in API calls
-    pub fn params_into(&self, params: &[(&str, &str)]) -> Params {
-        params
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
-    }
-
     /// Returns an empty parameter list
     pub fn no_params(&self) -> Params {
         HashMap::new()
@@ -229,13 +221,13 @@ impl ApiSync {
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
     pub fn get_token(&mut self, token_type: &str) -> Result<String, Error> {
         let mut params = hashmap!["action" => "query", "meta" => "tokens"];
-        if token_type.len() != 0 {
+        if !token_type.is_empty() {
             params.insert("type".to_string(), token_type.to_string());
         }
         let mut key = token_type.to_string();
-        key += &"token";
-        if token_type.len() == 0 {
-            key = "csrftoken".into()
+        key += "token";
+        if token_type.is_empty() {
+            key = "csrftoken".into();
         }
         let x = self.query_api_json_mut(&params, Method::Get)?;
         Ok(x["query"]["tokens"][&key]
@@ -354,10 +346,11 @@ impl ApiSync {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        Err(format!(
+                        return Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))?;
+                        )
+                        .into());
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -382,10 +375,11 @@ impl ApiSync {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        Err(format!(
+                        return Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))?;
+                        )
+                        .into());
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -565,7 +559,7 @@ impl ApiSync {
             .collect();
 
         let url = Url::parse(api_url)?;
-        let mut url_string = url.scheme().to_owned() + &"://";
+        let mut url_string = url.scheme().to_owned() + "://";
         url_string += url.host_str().ok_or("url.host_str is None")?;
         if let Some(port) = url.port() {
             write!(url_string, ":{}", port).unwrap();
@@ -573,16 +567,16 @@ impl ApiSync {
         url_string += url.path();
 
         let ret = self.rawurlencode(method.as_str())
-            + &"&"
+            + "&"
             + &self.rawurlencode(&url_string)
-            + &"&"
+            + "&"
             + &self.rawurlencode(&ret.join("&"));
 
         let key: String = match (&oauth.g_consumer_secret, &oauth.g_token_secret) {
             (Some(g_consumer_secret), Some(g_token_secret)) => {
-                self.rawurlencode(g_consumer_secret) + &"&" + &self.rawurlencode(g_token_secret)
+                self.rawurlencode(g_consumer_secret) + "&" + &self.rawurlencode(g_token_secret)
             }
-            _ => Err("g_consumer_secret or g_token_secret not set")?,
+            _ => return Err("g_consumer_secret or g_token_secret not set".into()),
         };
 
         let mut hmac = HmacSha1::new_varkey(&key.into_bytes())?; //crypto::hmac::Hmac::new(Sha1::new(), &key.into_bytes());
@@ -644,11 +638,9 @@ impl ApiSync {
         let parts: Vec<String> = headers
             .iter()
             .map(|(key, value)| {
-                let key = key.to_string();
+                let key = key.as_str();
                 let value = value.to_str().unwrap();
-                let key = self.rawurlencode(&key);
-                let value = self.rawurlencode(&value);
-                key.to_string() + &"=\"" + &value + &"\""
+                self.rawurlencode(key) + "=\"" + &self.rawurlencode(value) + "\""
             })
             .collect();
         header += &parts.join(", ");
@@ -761,7 +753,7 @@ impl ApiSync {
             self.user.set_from_login(&res["login"])?;
             self.load_current_user_info()
         } else {
-            Err("Login failed")?
+            Err("Login failed".into())
         }
     }
 
@@ -798,7 +790,7 @@ impl ApiSync {
         if uri.starts_with(concept_base_uri) {
             Ok(uri[concept_base_uri.len()..].to_string())
         } else {
-            Err(format!("{} does not start with {}", uri, concept_base_uri))?
+            Err(format!("{} does not start with {}", uri, concept_base_uri).into())
         }
     }
 
