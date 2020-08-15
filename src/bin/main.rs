@@ -1,7 +1,7 @@
 extern crate config;
 
 use config::Config;
-use mediawiki::hashmap;
+use mediawiki::params;
 use serde_json::Value;
 use std::error::Error;
 use std::fs::File;
@@ -147,7 +147,7 @@ fn main() {
 async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Box<dyn Error>> {
     let q = "Q13406268"; // Second sandbox item
     let token = api.get_edit_token().await.unwrap();
-    let params = hashmap![
+    let params = params![
         "action" => "wbcreateclaim",
         "entity" => q,
         "property" => "P31",
@@ -178,7 +178,7 @@ async fn _oauth_edit(api: &mut mediawiki::api::Api) {
     api.set_oauth(Some(oauth_params));
     //let _x = api.oauth().clone();
 
-    let mut params = hashmap![
+    let mut params = params![
         "action" => "wbeditentity",
         "id" => sandbox_item,
         "data" => "{\"labels\":[{\"language\":\"no\",\"value\":\"Baz\",\"add\":\"\"}]}",

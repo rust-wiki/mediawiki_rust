@@ -9,9 +9,9 @@ extern crate hmac;
 extern crate nanoid;
 
 #[macro_export]
-/// To quickly create a hashmap.
-/// Example: `hashmap!["action"=>"query","meta"=>"siteinfo","siprop"=>"general|namespaces|namespacealiases|libraries|extensions|statistics"]`
-macro_rules! hashmap {
+/// To quickly create a param set.
+/// Example: `params!["action"=>"query","meta"=>"siteinfo","siprop"=>"general|namespaces|namespacealiases|libraries|extensions|statistics"]`
+macro_rules! params {
     ($( $key: expr => $val: expr ),* $(,)?) => {{
          let mut map = ::std::collections::HashMap::new();
          $( map.insert($key.into(), $val.into()); )*

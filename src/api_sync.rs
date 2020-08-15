@@ -181,12 +181,12 @@ impl ApiSync {
     /// Loads the site info.
     /// Should only ever be called from `new()`
     fn load_site_info(&mut self) -> Result<&Value, Error> {
-        let params = hashmap![
+        let params = params![
             "action" => "query",
             "meta" => "siteinfo",
             "siprop" => "general|namespaces|namespacealiases|libraries|extensions|statistics",
         ];
-        self.site_info = self.get_query_api_json(&params)?;
+        self.site_info = self.get_query_api_json(params)?;
         Ok(&self.site_info)
     }
 
@@ -220,7 +220,7 @@ impl ApiSync {
 
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
     pub fn get_token(&mut self, token_type: &str) -> Result<String, Error> {
-        let mut params = hashmap!["action" => "query", "meta" => "tokens"];
+        let mut params = params!["action" => "query", "meta" => "tokens"];
         if !token_type.is_empty() {
             params.insert("type".to_string(), token_type.to_string());
         }
@@ -229,7 +229,7 @@ impl ApiSync {
         if token_type.is_empty() {
             key = "csrftoken".into();
         }
-        let x = self.query_api_json_mut(&params, Method::Get)?;
+        let x = self.query_api_json_mut(params, Method::Get)?;
         Ok(x["query"]["tokens"][&key]
             .as_str()
             .map(ToString::to_string)
@@ -242,7 +242,7 @@ impl ApiSync {
     }
 
     /// Same as `get_query_api_json` but automatically loads all results via the `continue` parameter
-    pub fn get_query_api_json_all(&self, params: &Params) -> Result<Value, Error> {
+    pub fn get_query_api_json_all(&self, params: Params) -> Result<Value, Error> {
         self.get_query_api_json_limit(params, None)
     }
 
@@ -261,7 +261,7 @@ impl ApiSync {
     /// Same as `get_query_api_json` but automatically loads more results via the `continue` parameter
     pub fn get_query_api_json_limit(
         &self,
-        params: &Params,
+        params: Params,
         max: Option<usize>,
     ) -> Result<Value, Error> {
         self.get_query_api_json_limit_iter(params, max)
@@ -273,11 +273,11 @@ impl ApiSync {
 
     /// Same as `get_query_api_json` but automatically loads more results via the `continue` parameter.
     /// Returns an iterator; each item is a "page" of results.
-    pub fn get_query_api_json_limit_iter<'a>(
-        &'a self,
-        params: &Params,
+    pub fn get_query_api_json_limit_iter(
+        &self,
+        params: Params,
         max: Option<usize>,
-    ) -> impl Iterator<Item = Result<Value, Error>> + 'a {
+    ) -> impl Iterator<Item = Result<Value, Error>> + '_ {
         struct ApiQuery<'a> {
             api: &'a ApiSync,
             params: Params,
@@ -304,7 +304,7 @@ impl ApiSync {
                     );
                 }
 
-                Some(match self.api.get_query_api_json(&current_params) {
+                Some(match self.api.get_query_api_json(current_params) {
                     Ok(mut result) => {
                         self.continue_params = result["continue"].clone();
                         if self.continue_params.is_null() {
@@ -326,7 +326,7 @@ impl ApiSync {
 
         ApiQuery {
             api: self,
-            params: params.clone(),
+            params,
             values_remaining: max,
             continue_params: Value::Null,
         }
@@ -334,8 +334,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    pub fn query_api_json(&self, params: &Params, method: Method) -> Result<Value, Error> {
-        let mut params = params.clone();
+    pub fn query_api_json(&self, mut params: Params, method: Method) -> Result<Value, Error> {
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
         let mut cumulative: u64 = 0;
@@ -363,8 +362,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    fn query_api_json_mut(&mut self, params: &Params, method: Method) -> Result<Value, Error> {
-        let mut params = params.clone();
+    fn query_api_json_mut(&mut self, mut params: Params, method: Method) -> Result<Value, Error> {
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
         let mut cumulative: u64 = 0;
@@ -454,18 +452,18 @@ impl ApiSync {
     }
 
     /// GET wrapper for `query_api_json`
-    pub fn get_query_api_json(&self, params: &Params) -> Result<Value, Error> {
+    pub fn get_query_api_json(&self, params: Params) -> Result<Value, Error> {
         self.query_api_json(params, Method::Get)
     }
 
     /// POST wrapper for `query_api_json`
-    pub fn post_query_api_json(&self, params: &Params) -> Result<Value, Error> {
+    pub fn post_query_api_json(&self, params: Params) -> Result<Value, Error> {
         self.query_api_json(params, Method::Post)
     }
 
     /// POST wrapper for `query_api_json`.
     /// Requires `&mut self`, for session cookie storage
-    pub fn post_query_api_json_mut(&mut self, params: &Params) -> Result<Value, Error> {
+    pub fn post_query_api_json_mut(&mut self, params: Params) -> Result<Value, Error> {
         self.query_api_json_mut(params, Method::Post)
     }
 
@@ -554,7 +552,7 @@ impl ApiSync {
             .filter_map(|k| {
                 to_sign
                     .get(k)
-                    .map(|k2| k.clone() + "=" + &self.rawurlencode(&k2))
+                    .map(|k2| k.to_string() + "=" + &self.rawurlencode(&k2))
             })
             .collect();
 
@@ -742,15 +740,17 @@ impl ApiSync {
         let lgname: &str = &lgname.into();
         let lgpassword: &str = &lgpassword.into();
         let lgtoken = self.get_token("login")?;
-        let params = hashmap!(
+        let params = params!(
             "action" => "login",
             "lgname" => lgname,
             "lgpassword" => lgpassword,
             "lgtoken" => lgtoken,
         );
-        let res = self.query_api_json_mut(&params, Method::Post)?;
+        let res = self.query_api_json_mut(params, Method::Post)?;
         if res["login"]["result"] == "Success" {
-            self.user.set_from_login(&res["login"])?;
+            self.user
+                .set_from_login(&res["login"])
+                .map_err(String::from)?;
             self.load_current_user_info()
         } else {
             Err("Login failed".into())
@@ -779,7 +779,7 @@ impl ApiSync {
     /// Tries to get the SPARQL endpoint URL from the site info
     pub fn sparql_query(&self, query: &str) -> Result<Value, Error> {
         let query_api_url = self.get_site_info_string("general", "wikibase-sparql")?;
-        let params = hashmap!["query" => query, "format" => "json"];
+        let params = params!["query" => query, "format" => "json"];
         let response = self.query_raw_response(&query_api_url, &params, Method::Post)?;
         Ok(response.json()?)
     }
@@ -814,12 +814,12 @@ impl ApiSync {
     /// Loads the user info from the API into the user structure
     pub fn load_user_info(&self, user: &mut User) -> Result<(), Error> {
         if !user.has_user_info() {
-            let params = hashmap![
+            let params = params![
                 "action" => "query",
                 "meta" => "userinfo",
                 "uiprop" => "blockinfo|groups|groupmemberships|implicitgroups|rights|options|ratelimits|realname|registrationdate|unreadcount|centralids|hasmsg",
             ];
-            let res = self.query_api_json(&params, Method::Get)?;
+            let res = self.query_api_json(params, Method::Get)?;
             println!("{:?}", &res);
             user.set_user_info(Some(res));
         }
@@ -860,21 +860,21 @@ mod tests {
     #[test]
     fn api_limit() {
         let api = ApiSync::new("https://www.wikidata.org/w/api.php").unwrap();
-        let params = hashmap!["action" => "query", "list" => "search", "srsearch" => "the"];
-        let result = api.get_query_api_json_limit(&params, Some(20)).unwrap();
+        let params = params!["action" => "query", "list" => "search", "srsearch" => "the"];
+        let result = api.get_query_api_json_limit(params, Some(20)).unwrap();
         assert_eq!(result["query"]["search"].as_array().unwrap().len(), 20);
     }
 
     #[test]
     fn api_no_limit() {
         let api = ApiSync::new("https://www.wikidata.org/w/api.php").unwrap();
-        let params = hashmap![
+        let params = params![
             "action" => "query",
             "list" => "search",
             "srlimit" => "500",
             "srsearch" => "John haswbstatement:P31=Q5 -haswbstatement:P735",
         ];
-        let result = api.get_query_api_json_all(&params).unwrap();
+        let result = api.get_query_api_json_all(params).unwrap();
         match result["query"]["search"].as_array() {
             Some(arr) => assert!(arr.len() > 1500),
             None => panic!("result.query.search is not an array"),
