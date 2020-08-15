@@ -18,7 +18,6 @@ use crate::api::Api;
 use crate::error::Error;
 use crate::title::Title;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::fmt;
 
 /// Represents a page.
@@ -52,17 +51,14 @@ impl Page {
             .title
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
-        let params = [
-            ("action", "query"),
-            ("prop", "revisions"),
-            ("titles", &title),
-            ("rvslots", "*"),
-            ("rvprop", "content"),
-            ("formatversion", "2"),
-        ]
-        .iter()
-        .map(|&(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+        let params = hashmap![
+            "action" => "query",
+            "prop" => "revisions",
+            "titles" => &title,
+            "rvslots" => "*",
+            "rvprop" => "content",
+            "formatversion" => "2"
+        ];
         let result = api
             .get_query_api_json(&params)
             .await
@@ -111,18 +107,15 @@ impl Page {
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
         let bot = if api.user().is_bot() { "true" } else { "false" };
-        let mut params: HashMap<String, String> = [
-            ("action", "edit"),
-            ("title", &title),
-            ("text", &text.into()),
-            ("summary", &summary.into()),
-            ("bot", bot),
-            ("formatversion", "2"),
-            ("token", &api.get_edit_token().await?),
-        ]
-        .iter()
-        .map(|&(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+        let mut params = hashmap![
+            "action" => "edit",
+            "title" => title,
+            "text" => text,
+            "summary" => summary,
+            "bot" => bot,
+            "formatversion" => "2",
+            "token" => api.get_edit_token().await?,
+        ];
 
         if !api.user().user_name().is_empty() {
             params.insert("assert".to_string(), "user".to_string());
@@ -145,7 +138,7 @@ impl Page {
             .title
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
-        let mut params = api.params_into(&[("action", "query"), ("titles", &title)]);
+        let mut params = hashmap!["action" => "query", "titles" => title];
         for (k, v) in additional_params {
             params.insert(k.to_string(), v.to_string());
         }

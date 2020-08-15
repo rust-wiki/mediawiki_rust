@@ -22,10 +22,10 @@ extern crate reqwest;
 extern crate sha1;
 
 use crate::api::OAuthParams;
-use crate::error::{Error, StringError};
+use crate::error::Error;
 use crate::hmac::{Mac, NewMac};
 use crate::title::Title;
-use crate::user::User;
+use crate::{method::Method, user::User, Params};
 use cookie::{Cookie, CookieJar};
 use nanoid::nanoid;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -155,11 +155,11 @@ impl ApiSync {
     }
 
     /// Returns a String from the site info, matching `["query"][k1][k2]`
-    pub fn get_site_info_string<'a>(&'a self, k1: &str, k2: &str) -> Result<&'a str, String> {
-        match self.get_site_info_value(k1, k2).as_str() {
-            Some(s) => Ok(s),
-            None => Err(format!("No 'query.{}.{}' value in site info", k1, k2)),
-        }
+    pub fn get_site_info_string<'a>(&'a self, k1: &str, k2: &str) -> Result<&'a str, Error> {
+        Ok(self
+            .get_site_info_value(k1, k2)
+            .as_str()
+            .ok_or_else(|| format!("No 'query.{}.{}' value in site info", k1, k2))?)
     }
 
     /// Returns the raw data for the namespace, matching `["query"]["namespaces"][namespace_id]`
@@ -182,7 +182,11 @@ impl ApiSync {
     /// Loads the site info.
     /// Should only ever be called from `new()`
     fn load_site_info(&mut self) -> Result<&Value, Error> {
-        let params = hashmap!["action".to_string()=>"query".to_string(),"meta".to_string()=>"siteinfo".to_string(),"siprop".to_string()=>"general|namespaces|namespacealiases|libraries|extensions|statistics".to_string()];
+        let params = hashmap![
+            "action" => "query",
+            "meta" => "siteinfo",
+            "siprop" => "general|namespaces|namespacealiases|libraries|extensions|statistics",
+        ];
         self.site_info = self.get_query_api_json(&params)?;
         Ok(&self.site_info)
     }
@@ -192,42 +196,40 @@ impl ApiSync {
     /// This allows for combining multiple API results via the `continue` parameter
     fn json_merge(&self, a: &mut Value, b: Value) {
         match (a, b) {
-            (a @ &mut Value::Object(_), Value::Object(b)) => match a.as_object_mut() {
-                Some(a) => {
+            (a @ &mut Value::Object(_), Value::Object(b)) => {
+                if let Some(a) = a.as_object_mut() {
                     for (k, v) in b {
                         self.json_merge(a.entry(k).or_insert(Value::Null), v);
                     }
                 }
-                None => {}
-            },
-            (a @ &mut Value::Array(_), Value::Array(b)) => match a.as_array_mut() {
-                Some(a) => {
+            }
+            (a @ &mut Value::Array(_), Value::Array(b)) => {
+                if let Some(a) = a.as_array_mut() {
                     for v in b {
                         a.push(v);
                     }
                 }
-                None => {}
-            },
+            }
             (a, b) => *a = b,
         }
     }
 
     /// Turns a Vec of str tuples into a Hashmap of String, to be used in API calls
-    pub fn params_into(&self, params: &[(&str, &str)]) -> HashMap<String, String> {
+    pub fn params_into(&self, params: &[(&str, &str)]) -> Params {
         params
             .into_iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect()
     }
 
-    /// Returns an empty parameter HashMap
-    pub fn no_params(&self) -> HashMap<String, String> {
+    /// Returns an empty parameter list
+    pub fn no_params(&self) -> Params {
         HashMap::new()
     }
 
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
     pub fn get_token(&mut self, token_type: &str) -> Result<String, Error> {
-        let mut params = hashmap!["action".to_string()=>"query".to_string(),"meta".to_string()=>"tokens".to_string()];
+        let mut params = hashmap!["action" => "query", "meta" => "tokens"];
         if token_type.len() != 0 {
             params.insert("type".to_string(), token_type.to_string());
         }
@@ -236,11 +238,11 @@ impl ApiSync {
         if token_type.len() == 0 {
             key = "csrftoken".into()
         }
-        let x = self.query_api_json_mut(&params, "GET")?;
-        match &x["query"]["tokens"][&key] {
-            Value::String(s) => Ok(s.to_string()),
-            _ => Err(StringError::new(format!("Could not get token: {:?}", x)).into()),
-        }
+        let x = self.query_api_json_mut(&params, Method::Get)?;
+        Ok(x["query"]["tokens"][&key]
+            .as_str()
+            .map(ToString::to_string)
+            .ok_or_else(|| format!("Could not get token: {:?}", x))?)
     }
 
     /// Calls `get_token()` to return an edit token
@@ -249,7 +251,7 @@ impl ApiSync {
     }
 
     /// Same as `get_query_api_json` but automatically loads all results via the `continue` parameter
-    pub fn get_query_api_json_all(&self, params: &HashMap<String, String>) -> Result<Value, Error> {
+    pub fn get_query_api_json_all(&self, params: &Params) -> Result<Value, Error> {
         self.get_query_api_json_limit(params, None)
     }
 
@@ -258,10 +260,7 @@ impl ApiSync {
         match result["query"].as_object() {
             Some(query) => query
                 .iter()
-                .filter_map(|(_key, part)| match part.as_array() {
-                    Some(a) => Some(a.len()),
-                    None => None,
-                })
+                .filter_map(|(_key, part)| part.as_array().map(Vec::len))
                 .next()
                 .unwrap_or(0),
             None => 0, // Don't know size
@@ -271,7 +270,7 @@ impl ApiSync {
     /// Same as `get_query_api_json` but automatically loads more results via the `continue` parameter
     pub fn get_query_api_json_limit(
         &self,
-        params: &HashMap<String, String>,
+        params: &Params,
         max: Option<usize>,
     ) -> Result<Value, Error> {
         self.get_query_api_json_limit_iter(params, max)
@@ -285,12 +284,12 @@ impl ApiSync {
     /// Returns an iterator; each item is a "page" of results.
     pub fn get_query_api_json_limit_iter<'a>(
         &'a self,
-        params: &HashMap<String, String>,
+        params: &Params,
         max: Option<usize>,
     ) -> impl Iterator<Item = Result<Value, Error>> + 'a {
         struct ApiQuery<'a> {
             api: &'a ApiSync,
-            params: HashMap<String, String>,
+            params: Params,
             values_remaining: Option<usize>,
             continue_params: Value,
         }
@@ -326,9 +325,9 @@ impl ApiSync {
                         result.as_object_mut().map(|r| r.remove("continue"));
                         Ok(result)
                     }
-                    e @ Err(_) => {
+                    Err(e) => {
                         self.values_remaining = Some(0);
-                        e
+                        Err(e)
                     }
                 })
             }
@@ -344,11 +343,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    pub fn query_api_json(
-        &self,
-        params: &HashMap<String, String>,
-        method: &str,
-    ) -> Result<Value, Error> {
+    pub fn query_api_json(&self, params: &Params, method: Method) -> Result<Value, Error> {
         let mut params = params.clone();
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
@@ -360,11 +355,10 @@ impl ApiSync {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        return Err(StringError::new(format!(
+                        Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))
-                        .into());
+                        ))?;
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -377,11 +371,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    fn query_api_json_mut(
-        &mut self,
-        params: &HashMap<String, String>,
-        method: &str,
-    ) -> Result<Value, Error> {
+    fn query_api_json_mut(&mut self, params: &Params, method: Method) -> Result<Value, Error> {
         let mut params = params.clone();
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
@@ -393,11 +383,10 @@ impl ApiSync {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        return Err(StringError::new(format!(
+                        Err(format!(
                             "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
                             &self.max_retry_attempts, cumulative
-                        ))
-                        .into());
+                        ))?;
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -430,9 +419,9 @@ impl ApiSync {
     }
 
     /// Checks if a query is an edit, based on parameters and method (GET/POST)
-    fn is_edit_query(&self, params: &HashMap<String, String>, method: &str) -> bool {
+    fn is_edit_query(&self, params: &Params, method: Method) -> bool {
         // Editing only through POST (?)
-        if method != "POST" {
+        if method != Method::Post {
             return false;
         }
         // Editing requires a token
@@ -443,65 +432,48 @@ impl ApiSync {
     }
 
     /// Sets the maglag parameter for a query, if necessary
-    fn _set_maxlag_params(&self, params: &mut HashMap<String, String>, method: &str) {
+    fn _set_maxlag_params(&self, params: &mut Params, method: Method) {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.maxlag_seconds {
-            Some(maxlag_seconds) => {
-                params.insert("maxlag".to_string(), maxlag_seconds.to_string());
-            }
-            None => {}
+        if let Some(maxlag_seconds) = self.maxlag_seconds {
+            params.insert("maxlag".to_string(), maxlag_seconds.to_string());
         }
     }
 
     /// Sets the maglag parameter for a query, if necessary
-    fn set_cumulative_maxlag_params(
-        &self,
-        params: &mut HashMap<String, String>,
-        method: &str,
-        cumulative: u64,
-    ) {
+    fn set_cumulative_maxlag_params(&self, params: &mut Params, method: Method, cumulative: u64) {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.maxlag_seconds {
-            Some(maxlag_seconds) => {
-                let added = cumulative + maxlag_seconds;
-                params.insert("maxlag".to_string(), added.to_string());
-            }
-            None => {}
+        if let Some(maxlag_seconds) = self.maxlag_seconds {
+            let added = cumulative + maxlag_seconds;
+            params.insert("maxlag".to_string(), added.to_string());
         }
     }
 
     /// Checks for a MAGLAG error, and returns the lag if so
     fn check_maxlag(&self, v: &Value) -> Option<u64> {
-        match v["error"]["code"].as_str() {
-            Some(code) => match code {
-                "maxlag" => v["error"]["lag"].as_u64().or(self.maxlag_seconds), // Current lag, if given, or fallback
-                _ => None,
-            },
-            None => None,
-        }
+        v["error"]["code"].as_str().and_then(|code| match code {
+            "maxlag" => v["error"]["lag"].as_u64().or(self.maxlag_seconds), // Current lag, if given, or fallback
+            _ => None,
+        })
     }
 
     /// GET wrapper for `query_api_json`
-    pub fn get_query_api_json(&self, params: &HashMap<String, String>) -> Result<Value, Error> {
-        self.query_api_json(params, "GET")
+    pub fn get_query_api_json(&self, params: &Params) -> Result<Value, Error> {
+        self.query_api_json(params, Method::Get)
     }
 
     /// POST wrapper for `query_api_json`
-    pub fn post_query_api_json(&self, params: &HashMap<String, String>) -> Result<Value, Error> {
-        self.query_api_json(params, "POST")
+    pub fn post_query_api_json(&self, params: &Params) -> Result<Value, Error> {
+        self.query_api_json(params, Method::Post)
     }
 
     /// POST wrapper for `query_api_json`.
     /// Requires `&mut self`, for session cookie storage
-    pub fn post_query_api_json_mut(
-        &mut self,
-        params: &HashMap<String, String>,
-    ) -> Result<Value, Error> {
-        self.query_api_json_mut(params, "POST")
+    pub fn post_query_api_json_mut(&mut self, params: &Params) -> Result<Value, Error> {
+        self.query_api_json_mut(params, Method::Post)
     }
 
     /// Adds or replaces cookies in the cookie jar from a http `Response`
@@ -510,17 +482,10 @@ impl ApiSync {
             .headers()
             .get_all(reqwest::header::SET_COOKIE)
             .iter()
-            .filter_map(|v| match v.to_str() {
-                Ok(x) => Some(x.to_string()),
-                Err(_) => None,
-            })
-            .collect::<Vec<String>>();
+            .filter_map(|v| v.to_str().ok().map(ToString::to_string));
         for cs in cookie_strings {
-            match Cookie::parse(cs.clone()) {
-                Ok(cookie) => {
-                    self.cookie_jar.add(cookie);
-                }
-                Err(_) => {}
+            if let Ok(cookie) = Cookie::parse(cs) {
+                self.cookie_jar.add(cookie);
             }
         }
     }
@@ -536,29 +501,21 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, and returns a text.
     /// Uses `query_raw`
-    pub fn query_api_raw(
-        &self,
-        params: &HashMap<String, String>,
-        method: &str,
-    ) -> Result<String, Error> {
+    pub fn query_api_raw(&self, params: &Params, method: Method) -> Result<String, Error> {
         self.query_raw(&self.api_url, params, method)
     }
 
     /// Runs a query against the MediaWiki API, and returns a text.
     /// Uses `query_raw_mut`
-    fn query_api_raw_mut(
-        &mut self,
-        params: &HashMap<String, String>,
-        method: &str,
-    ) -> Result<String, Error> {
+    fn query_api_raw_mut(&mut self, params: &Params, method: Method) -> Result<String, Error> {
         self.query_raw_mut(&self.api_url.clone(), params, method)
     }
 
     /// Generates a `RequestBuilder` for the API URL
     pub fn get_api_request_builder(
         &self,
-        params: &HashMap<String, String>,
-        method: &str,
+        params: &Params,
+        method: Method,
     ) -> Result<reqwest::blocking::RequestBuilder, Error> {
         self.request_builder(&self.api_url, params, method)
     }
@@ -591,9 +548,9 @@ impl ApiSync {
     /// Signs an OAuth request
     fn sign_oauth_request(
         &self,
-        method: &str,
+        method: Method,
         api_url: &str,
-        to_sign: &HashMap<String, String>,
+        to_sign: &Params,
         oauth: &OAuthParams,
     ) -> Result<String, Error> {
         let mut keys: Vec<String> = to_sign.iter().map(|(k, _)| self.rawurlencode(k)).collect();
@@ -601,27 +558,22 @@ impl ApiSync {
 
         let ret: Vec<String> = keys
             .iter()
-            .filter_map(|k| match to_sign.get(k) {
-                Some(k2) => {
-                    let v = self.rawurlencode(&k2);
-                    Some(k.clone() + &"=" + &v)
-                }
-                None => None,
+            .filter_map(|k| {
+                to_sign
+                    .get(k)
+                    .map(|k2| k.clone() + "=" + &self.rawurlencode(&k2))
             })
             .collect();
 
         let url = Url::parse(api_url)?;
         let mut url_string = url.scheme().to_owned() + &"://";
-        url_string += url
-            .host_str()
-            .ok_or(StringError::new("url.host_str is None"))?;
-        match url.port() {
-            Some(port) => write!(url_string, ":{}", port).unwrap(),
-            None => {}
+        url_string += url.host_str().ok_or("url.host_str is None")?;
+        if let Some(port) = url.port() {
+            write!(url_string, ":{}", port).unwrap();
         }
         url_string += url.path();
 
-        let ret = self.rawurlencode(&method)
+        let ret = self.rawurlencode(method.as_str())
             + &"&"
             + &self.rawurlencode(&url_string)
             + &"&"
@@ -631,13 +583,10 @@ impl ApiSync {
             (Some(g_consumer_secret), Some(g_token_secret)) => {
                 self.rawurlencode(g_consumer_secret) + &"&" + &self.rawurlencode(g_token_secret)
             }
-            _ => {
-                return Err(StringError::new("g_consumer_secret or g_token_secret not set").into());
-            }
+            _ => Err("g_consumer_secret or g_token_secret not set")?,
         };
 
-        let mut hmac = HmacSha1::new_varkey(&key.into_bytes())
-            .map_err(|e| StringError::new(format!("{:?}", e)))?; //crypto::hmac::Hmac::new(Sha1::new(), &key.into_bytes());
+        let mut hmac = HmacSha1::new_varkey(&key.into_bytes())?; //crypto::hmac::Hmac::new(Sha1::new(), &key.into_bytes());
         hmac.update(&ret.into_bytes());
         let bytes = hmac.finalize().into_bytes();
         let ret: String = base64::encode(&bytes);
@@ -648,18 +597,14 @@ impl ApiSync {
     /// Returns a signed OAuth POST `RequestBuilder`
     fn oauth_request_builder(
         &self,
-        method: &str,
+        method: Method,
         api_url: &str,
-        params: &HashMap<String, String>,
+        params: &Params,
     ) -> Result<reqwest::blocking::RequestBuilder, Error> {
-        let oauth = match &self.oauth {
-            Some(oauth) => oauth,
-            None => {
-                return Err(
-                    StringError::new("oauth_request_builder called but self.oauth is None").into(),
-                )
-            }
-        };
+        let oauth = self
+            .oauth
+            .as_ref()
+            .ok_or("oauth_request_builder called but self.oauth is None")?;
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)?
@@ -718,9 +663,8 @@ impl ApiSync {
         headers.insert(reqwest::header::USER_AGENT, self.user_agent_full().parse()?);
 
         match method {
-            "GET" => Ok(self.client.get(api_url).headers(headers).query(&params)),
-            "POST" => Ok(self.client.post(api_url).headers(headers).form(&params)),
-            other => panic!("Unsupported method '{}'", other),
+            Method::Get => Ok(self.client.get(api_url).headers(headers).query(&params)),
+            Method::Post => Ok(self.client.post(api_url).headers(headers).form(&params)),
         }
     }
 
@@ -728,8 +672,8 @@ impl ApiSync {
     fn request_builder(
         &self,
         api_url: &str,
-        params: &HashMap<String, String>,
-        method: &str,
+        params: &Params,
+        method: Method,
     ) -> Result<reqwest::blocking::RequestBuilder, Error> {
         // Use OAuth if set
         if self.oauth.is_some() {
@@ -737,19 +681,18 @@ impl ApiSync {
         }
 
         Ok(match method {
-            "GET" => self
+            Method::Get => self
                 .client
                 .get(api_url)
                 .header(reqwest::header::COOKIE, self.cookies_to_string())
                 .header(reqwest::header::USER_AGENT, self.user_agent_full())
                 .query(&params),
-            "POST" => self
+            Method::Post => self
                 .client
                 .post(api_url)
                 .header(reqwest::header::COOKIE, self.cookies_to_string())
                 .header(reqwest::header::USER_AGENT, self.user_agent_full())
                 .form(&params),
-            other => return Err(StringError::new(format!("Unsupported method '{}'", other)).into()),
         })
     }
 
@@ -757,8 +700,8 @@ impl ApiSync {
     fn query_raw_response(
         &self,
         api_url: &str,
-        params: &HashMap<String, String>,
-        method: &str,
+        params: &Params,
+        method: Method,
     ) -> Result<reqwest::blocking::Response, Error> {
         let req = self.request_builder(api_url, params, method)?;
         let resp = req.send()?;
@@ -767,13 +710,12 @@ impl ApiSync {
     }
 
     /// Delays the current thread, if the query performs an edit, and a delay time is set
-    fn enact_edit_delay(&self, params: &HashMap<String, String>, method: &str) {
+    fn enact_edit_delay(&self, params: &Params, method: Method) {
         if !self.is_edit_query(params, method) {
             return;
         }
-        match self.edit_delay_ms {
-            Some(ms) => thread::sleep(time::Duration::from_millis(ms)),
-            None => {}
+        if let Some(ms) = self.edit_delay_ms {
+            thread::sleep(time::Duration::from_millis(ms));
         }
     }
 
@@ -782,8 +724,8 @@ impl ApiSync {
     fn query_raw_mut(
         &mut self,
         api_url: &str,
-        params: &HashMap<String, String>,
-        method: &str,
+        params: &Params,
+        method: Method,
     ) -> Result<String, Error> {
         let resp = self.query_raw_response(api_url, params, method)?;
         self.set_cookies_from_response(&resp);
@@ -796,8 +738,8 @@ impl ApiSync {
     pub fn query_raw(
         &self,
         api_url: &str,
-        params: &HashMap<String, String>,
-        method: &str,
+        params: &Params,
+        method: Method,
     ) -> Result<String, Error> {
         let resp = self.query_raw_response(api_url, params, method)?;
         Ok(resp.text()?)
@@ -809,15 +751,18 @@ impl ApiSync {
         let lgname: &str = &lgname.into();
         let lgpassword: &str = &lgpassword.into();
         let lgtoken = self.get_token("login")?;
-        let params = hashmap!("action".to_string()=>"login".to_string(),"lgname".to_string()=>lgname.into(),"lgpassword".to_string()=>lgpassword.into(),"lgtoken".to_string()=>lgtoken.into());
-        let res = self.query_api_json_mut(&params, "POST")?;
+        let params = hashmap!(
+            "action" => "login",
+            "lgname" => lgname,
+            "lgpassword" => lgpassword,
+            "lgtoken" => lgtoken,
+        );
+        let res = self.query_api_json_mut(&params, Method::Post)?;
         if res["login"]["result"] == "Success" {
-            self.user
-                .set_from_login(&res["login"])
-                .map_err(StringError::new)?;
+            self.user.set_from_login(&res["login"])?;
             self.load_current_user_info()
         } else {
-            Err(StringError::new("Login failed").into())
+            Err("Login failed")?
         }
     }
 
@@ -842,29 +787,19 @@ impl ApiSync {
     /// Performs a SPARQL query against a wikibase installation.
     /// Tries to get the SPARQL endpoint URL from the site info
     pub fn sparql_query(&self, query: &str) -> Result<Value, Error> {
-        let query_api_url = self
-            .get_site_info_string("general", "wikibase-sparql")
-            .map_err(StringError::new)?;
-        let params = hashmap!["query".to_string()=>query.to_string(),"format".to_string()=>"json".to_string()];
-        let response = self.query_raw_response(&query_api_url, &params, "POST")?;
-        match response.json() {
-            Ok(json) => Ok(json),
-            Err(e) => Err(StringError::new(format!("{}", e)).into()),
-        }
+        let query_api_url = self.get_site_info_string("general", "wikibase-sparql")?;
+        let params = hashmap!["query" => query, "format" => "json"];
+        let response = self.query_raw_response(&query_api_url, &params, Method::Post)?;
+        Ok(response.json()?)
     }
 
     /// Given a `uri` (usually, an URL) that points to a Wikibase entity on this MediaWiki installation, returns the item ID
     pub fn extract_entity_from_uri(&self, uri: &str) -> Result<String, Error> {
-        let concept_base_uri = self
-            .get_site_info_string("general", "wikibase-conceptbaseuri")
-            .map_err(StringError::new)?;
+        let concept_base_uri = self.get_site_info_string("general", "wikibase-conceptbaseuri")?;
         if uri.starts_with(concept_base_uri) {
             Ok(uri[concept_base_uri.len()..].to_string())
         } else {
-            Err(
-                StringError::new(format!("{} does not start with {}", uri, concept_base_uri))
-                    .into(),
-            )
+            Err(format!("{} does not start with {}", uri, concept_base_uri))?
         }
     }
 
@@ -875,18 +810,12 @@ impl ApiSync {
         variable_name: &str,
     ) -> Vec<String> {
         let mut entities = vec![];
-        match sparql_result["results"]["bindings"].as_array() {
-            Some(bindings) => {
-                for b in bindings {
-                    match b[variable_name]["value"].as_str() {
-                        Some(entity_url) => {
-                            entities.push(self.extract_entity_from_uri(entity_url).unwrap());
-                        }
-                        None => {}
-                    }
+        if let Some(bindings) = sparql_result["results"]["bindings"].as_array() {
+            for b in bindings {
+                if let Some(entity_url) = b[variable_name]["value"].as_str() {
+                    entities.push(self.extract_entity_from_uri(entity_url).unwrap());
                 }
             }
-            None => {}
         }
         entities
     }
@@ -894,15 +823,12 @@ impl ApiSync {
     /// Loads the user info from the API into the user structure
     pub fn load_user_info(&self, user: &mut User) -> Result<(), Error> {
         if !user.has_user_info() {
-            let params: HashMap<String, String> = vec![
-                ("action", "query"),
-                ("meta", "userinfo"),
-                ("uiprop", "blockinfo|groups|groupmemberships|implicitgroups|rights|options|ratelimits|realname|registrationdate|unreadcount|centralids|hasmsg"),
-            ]
-            .iter()
-            .map(|x| (x.0.to_string(), x.1.to_string()))
-            .collect();
-            let res = self.query_api_json(&params, "GET")?;
+            let params = hashmap![
+                "action" => "query",
+                "meta" => "userinfo",
+                "uiprop" => "blockinfo|groups|groupmemberships|implicitgroups|rights|options|ratelimits|realname|registrationdate|unreadcount|centralids|hasmsg",
+            ];
+            let res = self.query_api_json(&params, Method::Get)?;
             println!("{:?}", &res);
             user.set_user_info(Some(res));
         }
@@ -943,8 +869,7 @@ mod tests {
     #[test]
     fn api_limit() {
         let api = ApiSync::new("https://www.wikidata.org/w/api.php").unwrap();
-        let params =
-            api.params_into(&[("action", "query"), ("list", "search"), ("srsearch", "the")]);
+        let params = hashmap!["action" => "query", "list" => "search", "srsearch" => "the"];
         let result = api.get_query_api_json_limit(&params, Some(20)).unwrap();
         assert_eq!(result["query"]["search"].as_array().unwrap().len(), 20);
     }
@@ -952,15 +877,12 @@ mod tests {
     #[test]
     fn api_no_limit() {
         let api = ApiSync::new("https://www.wikidata.org/w/api.php").unwrap();
-        let params = api.params_into(&[
-            ("action", "query"),
-            ("list", "search"),
-            ("srlimit", "500"),
-            (
-                "srsearch",
-                "John haswbstatement:P31=Q5 -haswbstatement:P735",
-            ),
-        ]);
+        let params = hashmap![
+            "action" => "query",
+            "list" => "search",
+            "srlimit" => "500",
+            "srsearch" => "John haswbstatement:P31=Q5 -haswbstatement:P735",
+        ];
         let result = api.get_query_api_json_all(&params).unwrap();
         match result["query"]["search"].as_array() {
             Some(arr) => assert!(arr.len() > 1500),

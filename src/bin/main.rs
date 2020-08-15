@@ -1,8 +1,8 @@
 extern crate config;
 
 use config::Config;
+use mediawiki::hashmap;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 
@@ -147,20 +147,14 @@ fn main() {
 async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Box<dyn Error>> {
     let q = "Q13406268"; // Second sandbox item
     let token = api.get_edit_token().await.unwrap();
-    let params: HashMap<String, String> = vec![
-        ("action".to_string(), "wbcreateclaim".to_string()),
-        ("entity".to_string(), q.to_string()),
-        ("property".to_string(), "P31".to_string()),
-        ("snaktype".to_string(), "value".to_string()),
-        (
-            "value".to_string(),
-            "{\"entity-type\":\"item\",\"id\":\"Q12345\"}".to_string(),
-        ),
-        ("token".to_string(), token.to_string()),
-    ]
-    .into_iter()
-    .collect();
-
+    let params = hashmap![
+        "action" => "wbcreateclaim",
+        "entity" => q,
+        "property" => "P31",
+        "snaktype" => "value",
+        "value" => "{\"entity-type\":\"item\",\"id\":\"Q12345\"}",
+        "token" => token,
+    ];
     api.post_query_api_json(&params)
         .await
         .map_err(|err| err.into_boxed() as Box<dyn Error>)
@@ -184,19 +178,12 @@ async fn _oauth_edit(api: &mut mediawiki::api::Api) {
     api.set_oauth(Some(oauth_params));
     //let _x = api.oauth().clone();
 
-    let mut params: HashMap<String, String> = vec![
-        ("action", "wbeditentity"),
-        ("id", sandbox_item),
-        (
-            "data",
-            "{\"labels\":[{\"language\":\"no\",\"value\":\"Baz\",\"add\":\"\"}]}",
-        ),
-        ("summary", "testing"),
-    ]
-    .iter()
-    .map(|(k, v)| (k.to_string(), v.to_string()))
-    .collect();
-
+    let mut params = hashmap![
+        "action" => "wbeditentity",
+        "id" => sandbox_item,
+        "data" => "{\"labels\":[{\"language\":\"no\",\"value\":\"Baz\",\"add\":\"\"}]}",
+        "summary" => "testing",
+    ];
     params.insert(
         "token".to_string(),
         api.get_edit_token()

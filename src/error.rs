@@ -78,6 +78,22 @@ impl From<StringError> for Error {
     }
 }
 
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Self {
+            err: Box::new(StringError::new(err)),
+        }
+    }
+}
+
+impl<'a> From<&'a str> for Error {
+    fn from(err: &'a str) -> Self {
+        Self {
+            err: Box::new(StringError::new(String::from(err))),
+        }
+    }
+}
+
 /// A simple wrapper for string errors.
 ///
 /// Using a regular string as an error type is not a good idea since it doens't compose very well.
