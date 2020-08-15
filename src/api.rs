@@ -20,7 +20,7 @@ extern crate nanoid;
 extern crate reqwest;
 extern crate sha1;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::hmac::{Mac, NewMac};
 use crate::title::Title;
 use crate::{method::Method, user::User, Params};
@@ -191,10 +191,11 @@ impl Api {
 
     /// Returns a String from the site info, matching `["query"][k1][k2]`
     pub fn get_site_info_string<'a>(&'a self, k1: &str, k2: &str) -> Result<&'a str> {
-        Ok(self
-            .get_site_info_value(k1, k2)
+        self.get_site_info_value(k1, k2)
             .as_str()
-            .ok_or_else(|| format!("No 'query.{}.{}' value in site info", k1, k2))?)
+            .ok_or_else(|| Error::MissingSiteInfo {
+                value: format!("query.{}.{}", k1, k2),
+            })
     }
 
     /// Returns the raw data for the namespace, matching `["query"]["namespaces"][namespace_id]`
@@ -265,11 +266,11 @@ impl Api {
         if token_type.is_empty() {
             key = "csrftoken".into()
         }
-        let x = self.query_api_json_mut(params, Method::Get).await?;
-        Ok(x["query"]["tokens"][&key]
+        let value = self.query_api_json_mut(params, Method::Get).await?;
+        Ok(value["query"]["tokens"][&key]
             .as_str()
             .map(ToString::to_string)
-            .ok_or_else(|| format!("Could not get token: {:?}", x))?)
+            .ok_or(Error::MissingToken { value })?)
     }
 
     /// Calls `get_token()` to return an edit token
@@ -439,11 +440,10 @@ impl Api {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        return Err(format!(
-                            "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
-                            &self.max_retry_attempts, cumulative
-                        )
-                        .into());
+                        return Err(Error::MaxAttemptsReached {
+                            attempts: self.max_retry_attempts,
+                            cumulative,
+                        });
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -467,11 +467,10 @@ impl Api {
             match self.check_maxlag(&v) {
                 Some(lag_seconds) => {
                     if attempts_left == 0 {
-                        return Err(format!(
-                            "Max attempts reached [MAXLAG] after {} attempts, cumulative maxlag {}",
-                            &self.max_retry_attempts, cumulative
-                        )
-                        .into());
+                        return Err(Error::MaxAttemptsReached {
+                            attempts: self.max_retry_attempts,
+                            cumulative,
+                        });
                     }
                     attempts_left -= 1;
                     cumulative += lag_seconds;
@@ -659,7 +658,7 @@ impl Api {
 
         let url = Url::parse(api_url)?;
         let mut url_string = url.scheme().to_owned() + "://";
-        url_string += url.host_str().ok_or("url.host_str is None")?;
+        url_string += url.host_str().ok_or(Error::MissingUrlHost)?;
         if let Some(port) = url.port() {
             write!(url_string, ":{}", port).unwrap();
         }
@@ -675,7 +674,7 @@ impl Api {
             (Some(g_consumer_secret), Some(g_token_secret)) => {
                 self.rawurlencode(g_consumer_secret) + "&" + &self.rawurlencode(g_token_secret)
             }
-            _ => return Err("g_consumer_secret or g_token_secret not set".into()),
+            _ => return Err(Error::MissingSecret),
         };
 
         let mut hmac = HmacSha1::new_varkey(&key.into_bytes())?; //crypto::hmac::Hmac::new(Sha1::new(), &key.into_bytes());
@@ -696,7 +695,7 @@ impl Api {
         let oauth = self
             .oauth
             .as_ref()
-            .ok_or("oauth_request_builder called but self.oauth is None")?;
+            .ok_or(Error::MissingOauth("oauth_request_builder"))?;
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)?
@@ -847,12 +846,15 @@ impl Api {
         );
         let res = self.query_api_json_mut(params, Method::Post).await?;
         if res["login"]["result"] == "Success" {
-            self.user
-                .set_from_login(&res["login"])
-                .map_err(String::from)?;
+            self.user.set_from_login(&res["login"])?;
             self.load_current_user_info().await
         } else {
-            Err("Login failed".into())
+            Err(Error::Login {
+                reason: res["login"]["reason"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            })
         }
     }
 
@@ -891,7 +893,10 @@ impl Api {
         if uri.starts_with(concept_base_uri) {
             Ok(uri[concept_base_uri.len()..].to_string())
         } else {
-            Err(format!("{} does not start with {}", uri, concept_base_uri).into())
+            Err(Error::BadUri {
+                uri: uri.to_string(),
+                base_uri: concept_base_uri.to_string(),
+            })
         }
     }
 
