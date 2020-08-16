@@ -11,7 +11,7 @@ extern crate nanoid;
 /// Example: `params!["action"=>"query","meta"=>"siteinfo","siprop"=>"general|namespaces|namespacealiases|libraries|extensions|statistics"]`
 macro_rules! params {
     ($( $key: expr => $val: expr ),* $(,)?) => {{
-         let mut map = $crate::Params::new();
+         let mut map = $crate::params::Params::new();
          $( map.insert($key.into(), $val.into()); )*
          map
     }}
@@ -27,9 +27,3 @@ pub mod page;
 pub mod params;
 pub mod title;
 pub mod user;
-
-pub use method::Method;
-pub use page::Page;
-pub use params::Params;
-pub use title::Title;
-pub use user::User;

@@ -15,17 +15,15 @@ This sync version is kept for backwards compatablilty.
     unused_qualifications
 )]
 
-extern crate base64;
-extern crate cookie;
-extern crate hmac;
-extern crate reqwest;
-extern crate sha1;
-
-use crate::api::OAuthParams;
-use crate::error::Error;
-use crate::hmac::{Mac, NewMac};
-use crate::title::Title;
-use crate::{method::Method, user::User, Params};
+use crate::{
+    api::OAuthParams,
+    error::Error,
+    hmac::{Mac, NewMac},
+    method::Method,
+    params::Params,
+    title::Title,
+    user::User,
+};
 use cookie::{Cookie, CookieJar};
 use nanoid::nanoid;
 use reqwest::header::{HeaderMap, HeaderValue};
