@@ -14,14 +14,12 @@ The `Api` class serves as a univeral interface to a MediaWiki API.
     unused_qualifications
 )]
 
-use crate::{
-    error::{Error, Result},
-    hmac::{Mac, NewMac},
-    method::Method,
-    params::Params,
-    title::Title,
-    user::User,
-};
+use crate::error::{Error, Result};
+use crate::hmac::{Mac, NewMac};
+use crate::method::Method;
+use crate::params::Params;
+use crate::title::Title;
+use crate::user::User;
 use cookie::{Cookie, CookieJar};
 use nanoid::nanoid;
 use reqwest::header::{HeaderMap, HeaderValue};

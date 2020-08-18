@@ -15,15 +15,13 @@ This sync version is kept for backwards compatablilty.
     unused_qualifications
 )]
 
-use crate::{
-    api::OAuthParams,
-    error::Error,
-    hmac::{Mac, NewMac},
-    method::Method,
-    params::Params,
-    title::Title,
-    user::User,
-};
+use crate::api::OAuthParams;
+use crate::error::{Error, Result};
+use crate::hmac::{Mac, NewMac};
+use crate::method::Method;
+use crate::params::Params;
+use crate::title::Title;
+use crate::user::User;
 use cookie::{Cookie, CookieJar};
 use nanoid::nanoid;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -60,7 +58,7 @@ pub struct ApiSync {
 impl ApiSync {
     /// Returns a new `ApiSync` element, and loads the MediaWiki site info from the `api_url` site.
     /// This is done both to get basic information about the site, and to test the API.
-    pub fn new(api_url: &str) -> Result<ApiSync, Error> {
+    pub fn new(api_url: &str) -> Result<ApiSync> {
         ApiSync::new_from_builder(api_url, reqwest::blocking::Client::builder())
     }
 
@@ -70,7 +68,7 @@ impl ApiSync {
     pub fn new_from_builder(
         api_url: &str,
         builder: reqwest::blocking::ClientBuilder,
-    ) -> Result<ApiSync, Error> {
+    ) -> Result<ApiSync> {
         let mut ret = ApiSync {
             api_url: api_url.to_string(),
             site_info: serde_json::from_str(r"{}")?,
@@ -123,7 +121,7 @@ impl ApiSync {
     }
 
     /// Loads the current user info; returns Ok(()) is successful
-    pub fn load_current_user_info(&mut self) -> Result<(), Error> {
+    pub fn load_current_user_info(&mut self) -> Result<()> {
         let mut user = std::mem::take(&mut self.user);
         self.load_user_info(&mut user)?;
         self.user = user;
@@ -151,7 +149,7 @@ impl ApiSync {
     }
 
     /// Returns a String from the site info, matching `["query"][k1][k2]`
-    pub fn get_site_info_string<'a>(&'a self, k1: &str, k2: &str) -> Result<&'a str, Error> {
+    pub fn get_site_info_string<'a>(&'a self, k1: &str, k2: &str) -> Result<&'a str> {
         Ok(self
             .get_site_info_value(k1, k2)
             .as_str()
@@ -179,7 +177,7 @@ impl ApiSync {
 
     /// Loads the site info.
     /// Should only ever be called from `new()`
-    fn load_site_info(&mut self) -> Result<&Value, Error> {
+    fn load_site_info(&mut self) -> Result<&Value> {
         let params = params![
             "action" => "query",
             "meta" => "siteinfo",
@@ -218,7 +216,7 @@ impl ApiSync {
     }
 
     /// Returns a token of a `token_type`, such as `login` or `csrf` (for editing)
-    pub fn get_token(&mut self, token_type: &str) -> Result<String, Error> {
+    pub fn get_token(&mut self, token_type: &str) -> Result<String> {
         let mut params = params!["action" => "query", "meta" => "tokens"];
         if !token_type.is_empty() {
             params.insert("type".to_string(), token_type.to_string());
@@ -236,12 +234,12 @@ impl ApiSync {
     }
 
     /// Calls `get_token()` to return an edit token
-    pub fn get_edit_token(&mut self) -> Result<String, Error> {
+    pub fn get_edit_token(&mut self) -> Result<String> {
         self.get_token("csrf")
     }
 
     /// Same as `get_query_api_json` but automatically loads all results via the `continue` parameter
-    pub fn get_query_api_json_all(&self, params: Params) -> Result<Value, Error> {
+    pub fn get_query_api_json_all(&self, params: Params) -> Result<Value> {
         self.get_query_api_json_limit(params, None)
     }
 
@@ -258,11 +256,7 @@ impl ApiSync {
     }
 
     /// Same as `get_query_api_json` but automatically loads more results via the `continue` parameter
-    pub fn get_query_api_json_limit(
-        &self,
-        params: Params,
-        max: Option<usize>,
-    ) -> Result<Value, Error> {
+    pub fn get_query_api_json_limit(&self, params: Params, max: Option<usize>) -> Result<Value> {
         self.get_query_api_json_limit_iter(params, max)
             .try_fold(Value::Null, |mut acc, result| {
                 self.json_merge(&mut acc, result?);
@@ -276,7 +270,7 @@ impl ApiSync {
         &self,
         params: Params,
         max: Option<usize>,
-    ) -> impl Iterator<Item = Result<Value, Error>> + '_ {
+    ) -> impl Iterator<Item = Result<Value>> + '_ {
         struct ApiQuery<'a> {
             api: &'a ApiSync,
             params: Params,
@@ -285,7 +279,7 @@ impl ApiSync {
         }
 
         impl<'a> Iterator for ApiQuery<'a> {
-            type Item = Result<Value, Error>;
+            type Item = Result<Value>;
             fn next(&mut self) -> Option<Self::Item> {
                 if let Some(0) = self.values_remaining {
                     return None;
@@ -333,7 +327,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    pub fn query_api_json(&self, mut params: Params, method: Method) -> Result<Value, Error> {
+    pub fn query_api_json(&self, mut params: Params, method: Method) -> Result<Value> {
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
         let mut cumulative: u64 = 0;
@@ -360,7 +354,7 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, using `method` GET or POST.
     /// Parameters are a hashmap; `format=json` is enforced.
-    fn query_api_json_mut(&mut self, mut params: Params, method: Method) -> Result<Value, Error> {
+    fn query_api_json_mut(&mut self, mut params: Params, method: Method) -> Result<Value> {
         let mut attempts_left = self.max_retry_attempts;
         params.insert("format".to_string(), "json".to_string());
         let mut cumulative: u64 = 0;
@@ -449,18 +443,18 @@ impl ApiSync {
     }
 
     /// GET wrapper for `query_api_json`
-    pub fn get_query_api_json(&self, params: Params) -> Result<Value, Error> {
+    pub fn get_query_api_json(&self, params: Params) -> Result<Value> {
         self.query_api_json(params, Method::Get)
     }
 
     /// POST wrapper for `query_api_json`
-    pub fn post_query_api_json(&self, params: Params) -> Result<Value, Error> {
+    pub fn post_query_api_json(&self, params: Params) -> Result<Value> {
         self.query_api_json(params, Method::Post)
     }
 
     /// POST wrapper for `query_api_json`.
     /// Requires `&mut self`, for session cookie storage
-    pub fn post_query_api_json_mut(&mut self, params: Params) -> Result<Value, Error> {
+    pub fn post_query_api_json_mut(&mut self, params: Params) -> Result<Value> {
         self.query_api_json_mut(params, Method::Post)
     }
 
@@ -489,13 +483,13 @@ impl ApiSync {
 
     /// Runs a query against the MediaWiki API, and returns a text.
     /// Uses `query_raw`
-    pub fn query_api_raw(&self, params: &Params, method: Method) -> Result<String, Error> {
+    pub fn query_api_raw(&self, params: &Params, method: Method) -> Result<String> {
         self.query_raw(&self.api_url, params, method)
     }
 
     /// Runs a query against the MediaWiki API, and returns a text.
     /// Uses `query_raw_mut`
-    fn query_api_raw_mut(&mut self, params: &Params, method: Method) -> Result<String, Error> {
+    fn query_api_raw_mut(&mut self, params: &Params, method: Method) -> Result<String> {
         self.query_raw_mut(&self.api_url.clone(), params, method)
     }
 
@@ -504,7 +498,7 @@ impl ApiSync {
         &self,
         params: &Params,
         method: Method,
-    ) -> Result<reqwest::blocking::RequestBuilder, Error> {
+    ) -> Result<reqwest::blocking::RequestBuilder> {
         self.request_builder(&self.api_url, params, method)
     }
 
@@ -540,7 +534,7 @@ impl ApiSync {
         api_url: &str,
         to_sign: &Params,
         oauth: &OAuthParams,
-    ) -> Result<String, Error> {
+    ) -> Result<String> {
         let mut keys: Vec<String> = to_sign.iter().map(|(k, _)| self.rawurlencode(k)).collect();
         keys.sort();
 
@@ -584,7 +578,7 @@ impl ApiSync {
         method: Method,
         api_url: &str,
         params: &Params,
-    ) -> Result<reqwest::blocking::RequestBuilder, Error> {
+    ) -> Result<reqwest::blocking::RequestBuilder> {
         let oauth = self
             .oauth
             .as_ref()
@@ -656,7 +650,7 @@ impl ApiSync {
         api_url: &str,
         params: &Params,
         method: Method,
-    ) -> Result<reqwest::blocking::RequestBuilder, Error> {
+    ) -> Result<reqwest::blocking::RequestBuilder> {
         // Use OAuth if set
         if self.oauth.is_some() {
             return self.oauth_request_builder(method, api_url, params);
@@ -684,7 +678,7 @@ impl ApiSync {
         api_url: &str,
         params: &Params,
         method: Method,
-    ) -> Result<reqwest::blocking::Response, Error> {
+    ) -> Result<reqwest::blocking::Response> {
         let req = self.request_builder(api_url, params, method)?;
         let resp = req.send()?;
         self.enact_edit_delay(params, method);
@@ -703,12 +697,7 @@ impl ApiSync {
 
     /// Runs a query against a generic URL, stores cookies, and returns a text
     /// Used for non-stateless queries, such as logins
-    fn query_raw_mut(
-        &mut self,
-        api_url: &str,
-        params: &Params,
-        method: Method,
-    ) -> Result<String, Error> {
+    fn query_raw_mut(&mut self, api_url: &str, params: &Params, method: Method) -> Result<String> {
         let resp = self.query_raw_response(api_url, params, method)?;
         self.set_cookies_from_response(&resp);
         Ok(resp.text()?)
@@ -717,19 +706,14 @@ impl ApiSync {
     /// Runs a query against a generic URL, and returns a text.
     /// Does not store cookies, but also does not require `&self` to be mutable.
     /// Used for simple queries
-    pub fn query_raw(
-        &self,
-        api_url: &str,
-        params: &Params,
-        method: Method,
-    ) -> Result<String, Error> {
+    pub fn query_raw(&self, api_url: &str, params: &Params, method: Method) -> Result<String> {
         let resp = self.query_raw_response(api_url, params, method)?;
         Ok(resp.text()?)
     }
 
     /// Performs a login against the MediaWiki API.
     /// If successful, user information is stored in `User`, and in the cookie jar
-    pub fn login<S: Into<String>>(&mut self, lgname: S, lgpassword: S) -> Result<(), Error> {
+    pub fn login<S: Into<String>>(&mut self, lgname: S, lgpassword: S) -> Result<()> {
         let lgname: &str = &lgname.into();
         let lgpassword: &str = &lgpassword.into();
         let lgtoken = self.get_token("login")?;
@@ -773,7 +757,7 @@ impl ApiSync {
 
     /// Performs a SPARQL query against a wikibase installation.
     /// Tries to get the SPARQL endpoint URL from the site info
-    pub fn sparql_query(&self, query: &str) -> Result<Value, Error> {
+    pub fn sparql_query(&self, query: &str) -> Result<Value> {
         let query_api_url = self.get_site_info_string("general", "wikibase-sparql")?;
         let params = params!["query" => query, "format" => "json"];
         let response = self.query_raw_response(&query_api_url, &params, Method::Post)?;
@@ -781,7 +765,7 @@ impl ApiSync {
     }
 
     /// Given a `uri` (usually, an URL) that points to a Wikibase entity on this MediaWiki installation, returns the item ID
-    pub fn extract_entity_from_uri(&self, uri: &str) -> Result<String, Error> {
+    pub fn extract_entity_from_uri(&self, uri: &str) -> Result<String> {
         let concept_base_uri = self.get_site_info_string("general", "wikibase-conceptbaseuri")?;
         if uri.starts_with(concept_base_uri) {
             Ok(uri[concept_base_uri.len()..].to_string())
@@ -811,7 +795,7 @@ impl ApiSync {
     }
 
     /// Loads the user info from the API into the user structure
-    pub fn load_user_info(&self, user: &mut User) -> Result<(), Error> {
+    pub fn load_user_info(&self, user: &mut User) -> Result<()> {
         if !user.has_user_info() {
             let params = params![
                 "action" => "query",
