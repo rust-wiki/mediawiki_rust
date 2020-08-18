@@ -1,9 +1,9 @@
 extern crate config;
 
 use config::Config;
-use mediawiki::hashmap;
+use mediawiki::error::Error;
+use mediawiki::params;
 use serde_json::Value;
-use std::error::Error;
 use std::fs::File;
 
 /*
@@ -144,10 +144,10 @@ fn main() {
     _wikidata_item_tester();
 }*/
 
-async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Box<dyn Error>> {
+async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Error> {
     let q = "Q13406268"; // Second sandbox item
     let token = api.get_edit_token().await.unwrap();
-    let params = hashmap![
+    let params = params![
         "action" => "wbcreateclaim",
         "entity" => q,
         "property" => "P31",
@@ -155,9 +155,7 @@ async fn _edit_sandbox_item(api: &mut mediawiki::api::Api) -> Result<Value, Box<
         "value" => "{\"entity-type\":\"item\",\"id\":\"Q12345\"}",
         "token" => token,
     ];
-    api.post_query_api_json(&params)
-        .await
-        .map_err(|err| err.into_boxed() as Box<dyn Error>)
+    api.post_query_api_json(params).await
 }
 
 async fn _login_api_from_config(api: &mut mediawiki::api::Api) {
@@ -178,7 +176,7 @@ async fn _oauth_edit(api: &mut mediawiki::api::Api) {
     api.set_oauth(Some(oauth_params));
     //let _x = api.oauth().clone();
 
-    let mut params = hashmap![
+    let mut params = params![
         "action" => "wbeditentity",
         "id" => sandbox_item,
         "data" => "{\"labels\":[{\"language\":\"no\",\"value\":\"Baz\",\"add\":\"\"}]}",
@@ -191,7 +189,7 @@ async fn _oauth_edit(api: &mut mediawiki::api::Api) {
             .expect("Could not get edit token"),
     );
 
-    match api.post_query_api_json_mut(&params).await {
+    match api.post_query_api_json_mut(params).await {
         Ok(_) => println!("Edited https://www.wikidata.org/wiki/{}", sandbox_item),
         Err(e) => panic!("{:?}", &e),
     }

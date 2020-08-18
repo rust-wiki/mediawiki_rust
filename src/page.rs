@@ -17,8 +17,9 @@ The `Page` class deals with operations done on pages, like editing.
 use crate::api::Api;
 use crate::error::Error;
 use crate::title::Title;
+
 use serde_json::Value;
-use std::fmt;
+use thiserror::Error;
 
 /// Represents a page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +52,7 @@ impl Page {
             .title
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
-        let params = hashmap![
+        let params = params![
             "action" => "query",
             "prop" => "revisions",
             "titles" => &title,
@@ -60,7 +61,7 @@ impl Page {
             "formatversion" => "2"
         ];
         let result = api
-            .get_query_api_json(&params)
+            .get_query_api_json(params)
             .await
             .map_err(PageError::RequestError)?;
 
@@ -107,7 +108,7 @@ impl Page {
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
         let bot = if api.user().is_bot() { "true" } else { "false" };
-        let mut params = hashmap![
+        let mut params = params![
             "action" => "edit",
             "title" => title,
             "text" => text,
@@ -121,7 +122,7 @@ impl Page {
             params.insert("assert".to_string(), "user".to_string());
         }
 
-        let result = api.post_query_api_json(&params).await?;
+        let result = api.post_query_api_json(params).await?;
         match result["edit"]["result"].as_str() {
             Some("Success") => Ok(()),
             _ => Err(PageError::EditError(result).into()),
@@ -138,7 +139,7 @@ impl Page {
             .title
             .full_pretty(api)
             .ok_or_else(|| PageError::BadTitle(self.title.clone()))?;
-        let mut params = hashmap!["action" => "query", "titles" => title];
+        let mut params = params!["action" => "query", "titles" => title];
         for (k, v) in additional_params {
             params.insert(k.to_string(), v.to_string());
         }
@@ -342,46 +343,33 @@ impl Page {
 }
 
 /// Errors that can go wrong while performing operations on a `Page`.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum PageError {
     /// Couldn't obtain the title for this page for use in an API request.
+    #[error("Invalid title for this page: {0:?}")]
     BadTitle(Title),
 
     /// Couldn't understand the API response (provided).
+    #[error("Bad API response while fetching revision content: {0:?}")]
     BadResponse(Value),
 
     /// Missing page.
+    #[error("Page missing: {0:?}")]
     Missing(Title),
 
     /// Edit failed; API response is provided.
+    #[error("Edit resulted in error: {0:?}")]
     EditError(Value),
 
     /// Error while performing the API request.
+    #[error("Request error: {0}")]
     RequestError(Error),
 
     /// Unexpected data structure (eg array instead of object) in API JSON result
+    #[error("Result format error: {0}")]
     UnexpectedResultFormat(String),
 }
-
-impl fmt::Display for PageError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PageError::BadTitle(title) => write!(f, "invalid title for this Page: {:?}", title),
-            PageError::BadResponse(response) => write!(
-                f,
-                "bad API response while fetching revision content: {:?}",
-                response
-            ),
-            PageError::Missing(title) => write!(f, "page missing: {:?}", title),
-            PageError::EditError(response) => write!(f, "edit resulted in error: {:?}", response),
-            PageError::RequestError(error) => write!(f, "request error: {}", error),
-            PageError::UnexpectedResultFormat(error) => write!(f, "result format error: {}", error),
-        }
-    }
-}
-
-impl std::error::Error for PageError {}
 
 #[cfg(test)]
 mod tests {

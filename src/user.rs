@@ -14,6 +14,7 @@ The `User` class deals with the (current) ApiSync user.
     unused_qualifications
 )]
 
+use crate::error::{Error, Result};
 use serde_json::Value;
 
 /// `User` contains the login data for the `ApiSync`
@@ -113,15 +114,15 @@ impl User {
     }
 
     /// Tries to set user information from the `ApiSync` call
-    pub fn set_from_login(&mut self, login: &Value) -> Result<(), &str> {
+    pub fn set_from_login(&mut self, login: &Value) -> Result<()> {
         if login["result"] == "Success" {
             match login["lgusername"].as_str() {
                 Some(s) => self.lgusername = s.to_string(),
-                None => return Err("No lgusername in login result"),
+                None => return Err(Error::MissingKey("lgusername")),
             }
             match login["lguserid"].as_u64() {
                 Some(u) => self.lguserid = u,
-                None => return Err("No lguserid in login result"),
+                None => return Err(Error::MissingKey("lguserid")),
             }
 
             self.is_logged_in = true;

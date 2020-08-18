@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[cfg(test)]
 extern crate lazy_static;
 #[cfg(test)]
@@ -9,17 +7,15 @@ extern crate hmac;
 extern crate nanoid;
 
 #[macro_export]
-/// To quickly create a hashmap.
-/// Example: `hashmap!["action"=>"query","meta"=>"siteinfo","siprop"=>"general|namespaces|namespacealiases|libraries|extensions|statistics"]`
-macro_rules! hashmap {
+/// To quickly create a param set.
+/// Example: `params!["action"=>"query","meta"=>"siteinfo","siprop"=>"general|namespaces|namespacealiases|libraries|extensions|statistics"]`
+macro_rules! params {
     ($( $key: expr => $val: expr ),* $(,)?) => {{
-         let mut map = ::std::collections::HashMap::new();
+         let mut map = $crate::params::Params::new();
          $( map.insert($key.into(), $val.into()); )*
          map
     }}
 }
-
-pub type Params = HashMap<String, String>;
 
 pub use reqwest;
 
@@ -28,5 +24,6 @@ pub mod api_sync;
 pub mod error;
 pub mod method;
 pub mod page;
+pub mod params;
 pub mod title;
 pub mod user;
